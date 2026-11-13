@@ -1,11 +1,13 @@
 # Compadre Shorts Studio
 
-Fábrica local de Shorts para el canal **Compadre Gameplay**. El objetivo inicial es transformar gameplays propios de GTA 6 en clips verticales que se puedan revisar antes de publicarlos.
+Fábrica local de Shorts para el canal **Compadre Gameplay**. Prepara clips verticales a partir de gameplays propios, con revisión humana antes de publicarlos.
 
 ## Enfoque
 
 - Procesamiento local con FFmpeg en macOS; los vídeos pesados no se renderizan en GitHub Actions.
 - Salida vertical 9:16 a 1080×1920.
+- Preset visual `viral` con contraste, saturación y enfoque moderadamente reforzados; preset `clean` sin ese tratamiento.
+- Procesamiento de audio opcional: normalización de sonoridad y control de picos con FFmpeg.
 - Cortes configurables y manifiesto JSON para organizar cada lote.
 - Revisión humana obligatoria antes de publicar.
 - Publicación en YouTube solo en una fase posterior, mediante OAuth y autorización explícita.
@@ -26,31 +28,50 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-## Uso previsto
+## Uso
 
-Cortar un gameplay en segmentos consecutivos de 60 segundos:
+Preparar clips de 60 segundos con el estilo viral y audio normalizado (valores predeterminados):
 
 ```bash
-compadre-shorts input.mp4 --output renders --mode sequential --duration 60
+compadre-shorts input.mp4 --output renders --duration 60
 ```
 
-El modo `smart` de la primera versión es una preparación conservadora basada en intervalos; **no** detecta todavía semánticamente persecuciones, tiroteos ni momentos divertidos.
+Elegir un aspecto limpio y conservar el nivel de audio original:
+
+```bash
+compadre-shorts input.mp4 --output renders --style clean --audio-processing original
+```
+
+La normalización usa un objetivo de sonoridad y un limitador de picos. No equivale a eliminar ruido, separar efectos ni mezclar música. Si el original no tiene audio, el programa lo registra en el manifiesto.
+
+## Qué hace y qué no hace esta versión
+
+- Convierte y recorta el vídeo en formato vertical 1080×1920.
+- Aplica un tratamiento visual moderado según el preset.
+- Puede equilibrar la sonoridad y limitar picos del audio original del juego.
+- El modo `smart` sigue siendo una segmentación por intervalos: **no** detecta semánticamente persecuciones, tiroteos ni momentos divertidos.
+- No genera subtítulos ni diálogos inventados.
+- No añade música ni efectos de sonido externos.
+- No selecciona automáticamente los mejores momentos todavía.
 
 ## Criterio editorial
 
-La duración final debe depender del potencial del momento, no de una duración rígida. Como orientación: humor o sorpresa 15–90 s; persecuciones y tiroteos 45–180 s; escenas cinematográficas 60–180 s. Hook en los primeros 1–3 segundos, progresión clara y desenlace fuerte. No publicar lotes masivos sin revisar ni repetir clips indiscriminadamente.
+La duración final debe depender del potencial del momento, no de una duración rígida. Como orientación: humor o sorpresa 15–90 s; persecuciones y tiroteos 45–180 s; escenas cinematográficas 60–180 s. Hook en los primeros 1–3 segundos, progresión clara y desenlace fuerte. Revisar cada clip antes de publicar.
 
 ## Seguridad y derechos
 
 - No subir vídeos originales, renders, claves, tokens OAuth ni archivos `.env` al repositorio.
 - Usar únicamente gameplay propio o autorizado.
 - Utilizar música y efectos con licencias adecuadas.
-- La narración sintética es opcional y nunca debe inventar hechos ni contradecir lo que se ve.
+- No publicar lotes masivos sin revisión.
 - No se promete viralidad ni monetización.
 
-## Estado del proyecto
+## Próximas fases
 
-Base documental inicial. La siguiente implementación incorpora la CLI de corte/renderizado y el manifiesto. La detección inteligente de escenas, subtítulos, voz sintética, conexión OAuth y analítica quedan para fases posteriores.
+1. Análisis de candidatos por ventanas usando señales visuales y de audio, con puntuación explicable y revisión humana.
+2. Plantillas de texto de impacto configurables, sin atribuirlas como transcripción.
+3. Miniaturas y metadatos sugeridos para YouTube.
+4. Flujo de publicación opcional con OAuth y confirmación explícita.
 
 - [Hoja de ruta](docs/ROADMAP.md)
 - [Criterios editoriales](docs/EDITORIAL.md)

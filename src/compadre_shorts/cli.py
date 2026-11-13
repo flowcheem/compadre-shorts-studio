@@ -1,4 +1,4 @@
-"""Local FFmpeg-based clip preparation for Compadre Shorts Studio."""
+"""Local FFmpeg-based clip preparation for Compadre Shorts Studio v0.2."""
 
 from __future__ import annotations
 
@@ -33,6 +33,15 @@ def probe_duration(path: Path, ffprobe: str) -> float:
     return duration
 
 
+def probe_has_audio(path: Path, ffprobe: str) -> bool:
+    result = subprocess.run(
+        [ffprobe, "-v", "error", "-select_streams", "a:0",
+         "-show_entries", "stream=index", "-of", "csv=p=0", str(path)],
+        check=True, capture_output=True, text=True,
+    )
+    return bool(result.stdout.strip())
+
+
 def build_segments(total: float, chunk: float, minimum: float) -> list[tuple[float, float]]:
     segments: list[tuple[float, float]] = []
     start = 0.0
@@ -48,20 +57,43 @@ def build_segments(total: float, chunk: float, minimum: float) -> list[tuple[flo
 
 
 def render_clip(
-    ffmpeg: str, source: Path, destination: Path, start: float, length: float
+    ffmpeg: str,
+    source: Path,
+    destination: Path,
+    start: float,
+    length: float,
+    style: str,
+    audio_processing: str,
+    has_audio: bool,
 ) -> None:
-    video_filter = (
-        "scale=1080:1920:force_original_aspect_ratio=increase,"
-        "crop=1080:1920,setsar=1"
-    )
+    video_filters = [
+        "scale=1080:1920:force_original_aspect_ratio=increase",
+        "crop=1080:1920",
+        "setsar=1",
+    ]
+    if style == "viral":
+        # A restrained punchier grade; no scene understanding or fake captions.
+        video_filters.extend([
+            "eq=contrast=1.10:saturation=1.20:brightness=0.01",
+            "unsharp=5:5:0.55:3:3:0.25",
+        ])
+
     command = [
         ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
         "-ss", f"{start:.3f}", "-i", str(source), "-t", f"{length:.3f}",
-        "-map", "0:v:0", "-map", "0:a?", "-vf", video_filter,
+        "-map", "0:v:0", "-map", "0:a?",
+        "-vf", ",".join(video_filters),
         "-c:v", "libx264", "-preset", "medium", "-crf", "21",
-        "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
-        "-movflags", "+faststart", str(destination),
+        "-pix_fmt", "yuv420p",
     ]
+    if has_audio and audio_processing == "normalize":
+        command.extend([
+            "-af", "loudnorm=I=-16:TP=-1.5:LRA=11,alimiter=limit=0.95",
+        ])
+    command.extend([
+        "-c:a", "aac", "-b:a", "192k",
+        "-movflags", "+faststart", str(destination),
+    ])
     subprocess.run(command, check=True)
 
 
@@ -77,6 +109,11 @@ def main() -> int:
                         help="Target segment duration in seconds (default: 60)")
     parser.add_argument("--min-seconds", type=float, default=15.0,
                         help="Discard a final remainder shorter than this (default: 15)")
+    parser.add_argument("--style", choices=("clean", "viral"), default="viral",
+                        help="Visual preset: clean or punchier viral grade (default: viral)")
+    parser.add_argument("--audio-processing", choices=("original", "normalize"),
+                        default="normalize",
+                        help="Keep original audio level or apply loudness/peak control")
     args = parser.parse_args()
 
     try:
@@ -91,6 +128,7 @@ def main() -> int:
         ffmpeg = require_binary("ffmpeg")
         ffprobe = require_binary("ffprobe")
         total = probe_duration(source, ffprobe)
+        has_audio = probe_has_audio(source, ffprobe)
         segments = build_segments(total, args.duration, args.min_seconds)
         if not segments:
             raise RuntimeError("No segments meet the minimum duration.")
@@ -100,9 +138,12 @@ def main() -> int:
         stem = source.stem
         manifest = {
             "project": "Compadre Shorts Studio",
+            "version": "0.2.0",
             "source": str(source),
             "source_duration_seconds": round(total, 3),
             "mode": args.mode,
+            "style": args.style,
+            "audio_processing": args.audio_processing if has_audio else "no_audio_stream",
             "segment_target_seconds": args.duration,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "editorial_status": "review_required",
@@ -119,7 +160,10 @@ def main() -> int:
             filename = f"{stem}_short_{number:03d}.mp4"
             destination = output_dir / filename
             print(f"[{number}/{len(segments)}] Rendering {filename}")
-            render_clip(ffmpeg, source, destination, start, length)
+            render_clip(
+                ffmpeg, source, destination, start, length,
+                args.style, args.audio_processing, has_audio,
+            )
             manifest["clips"].append({
                 "file": filename,
                 "start_seconds": round(start, 3),
