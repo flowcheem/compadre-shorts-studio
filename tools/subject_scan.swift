@@ -58,8 +58,6 @@ func run() throws {
     var lostSamples = 0
     let request = VNDetectHumanRectanglesRequest()
     request.upperBodyOnly = false
-    request.minimumConfidence = 0.35
-    request.maximumObservations = 12
 
     var time = 0.0
     while time < duration {
@@ -68,6 +66,8 @@ func run() throws {
             let image = try generator.copyCGImage(at: cmTime, actualTime: nil)
             let handler = VNImageRequestHandler(cgImage: image, options: [:])
             try handler.perform([request])
+            // VNDetectHumanRectanglesRequest does not expose minimumConfidence
+            // or maximumObservations. Filter its observations after performing it.
             let candidates = (request.results ?? []).filter { $0.confidence >= 0.35 }
             var chosen: VNHumanObservation? = nil
 
