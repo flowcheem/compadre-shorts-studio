@@ -42,7 +42,9 @@ def probe_has_audio(path: Path, ffprobe: str) -> bool:
     return bool(result.stdout.strip())
 
 
-def build_segments(total: float, chunk: float, minimum: float) -> list[tuple[float, float]]:
+def build_segments(
+    total: float, chunk: float, minimum: float, max_segments: int | None = None
+) -> list[tuple[float, float]]:
     segments: list[tuple[float, float]] = []
     start = 0.0
     index = 0
@@ -51,6 +53,8 @@ def build_segments(total: float, chunk: float, minimum: float) -> list[tuple[flo
         if length < minimum:
             break
         segments.append((start, length))
+        if max_segments is not None and len(segments) >= max_segments:
+            break
         index += 1
         start = index * chunk
     return segments
@@ -143,6 +147,8 @@ def main() -> int:
     parser.add_argument("--mode", choices=("sequential", "smart"), default="sequential")
     parser.add_argument("--duration", type=float, default=60.0,
                         help="Target segment duration in seconds (default: 60)")
+    parser.add_argument("--max-clips", type=int, default=30,
+                        help="Maximum number of clips to render (default: 30)")
     parser.add_argument("--min-seconds", type=float, default=15.0,
                         help="Discard a final remainder shorter than this (default: 15)")
     parser.add_argument("--style", choices=("clean", "viral"), default="viral",
@@ -161,6 +167,8 @@ def main() -> int:
         source = args.input.expanduser().resolve()
         if not source.is_file():
             raise RuntimeError(f"Input file does not exist: {source}")
+        if args.max_clips <= 0:
+            raise RuntimeError("--max-clips must be greater than zero.")
         if args.duration <= 0 or args.min_seconds <= 0:
             raise RuntimeError("--duration and --min-seconds must be greater than zero.")
         if args.min_seconds > args.duration:
@@ -170,7 +178,7 @@ def main() -> int:
         ffprobe = require_binary("ffprobe")
         total = probe_duration(source, ffprobe)
         has_audio = probe_has_audio(source, ffprobe)
-        segments = build_segments(total, args.duration, args.min_seconds)
+        segments = build_segments(total, args.duration, args.min_seconds, args.max_clips)
         if not segments:
             raise RuntimeError("No segments meet the minimum duration.")
 

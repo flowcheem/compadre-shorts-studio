@@ -1,53 +1,47 @@
 # Compadre Shorts Studio
 
-Fábrica local de Shorts para **Compadre Gameplay**. Prepara clips verticales desde gameplays propios, con revisión antes de publicar.
+## Flujo cloud
 
-## Estado v0.4 — base de producción
+1. Copia el gameplay de PlayStation en la carpeta ENTRADA de Google Drive.
+2. GitHub Actions revisa Drive cada 15 minutos y solo toma archivos sin cambios durante 10 minutos.
+3. Descarga un único vídeo y lo procesa en un runner cloud; no utiliza el Mac.
+4. Renderiza hasta 10 clips verticales de 60 segundos con encuadre safe (conserva toda la imagen sobre fondo desenfocado).
+5. Publica cada clip como público en el canal autorizado, con título, descripción y etiquetas.
+6. Verifica el procesamiento de todos los Shorts y solo entonces elimina el original de Drive.
+7. Guarda los renders y el manifiesto de publicación como artefacto privado durante 7 días.
 
-- Procesamiento local con FFmpeg; los vídeos no se renderizan en GitHub Actions.
-- Salida 1080×1920, preset visual `viral` y audio normalizado por defecto.
-- **Encuadre `center` por defecto:** llena el lienzo 9:16 (1080×1920), sin bandas difuminadas. Puede recortar partes de la acción.
-- Encuadre `safe` disponible como alternativa de conservación completa, con fondo ampliado y desenfocado.
-- FFmpeg se ejecuta con `-nostdin` para evitar que consuma accidentalmente entradas del Terminal.
-- Manifiesto JSON con parámetros, estado de revisión y limitaciones conocidas.
+## Seguridad, reintentos y duplicados
 
-## Importante: seguimiento del protagonista
+- Si falla la descarga, el render, una publicación o la verificación de YouTube, el original no se elimina.
+- Los IDs de los Shorts publicados se guardan como propiedades privadas del archivo de Drive. Si una ejecución se interrumpe, el siguiente intento verifica y reutiliza esos IDs en vez de volver a publicar los mismos clips.
+- La limpieza solo se permite cuando todos los clips de la ejecución han pasado la verificación de YouTube. El borrado de Drive es permanente.
+- Los trabajos de Drive se procesan de uno en uno. Los estados de procesamiento abandonados se pueden reintentar después de 8 horas.
+- Los títulos y etiquetas actuales son plantillas genéricas; no describen automáticamente el contenido específico de cada jugada.
 
-Las pruebas locales mostraron que Apple Vision solo detectó personas en una parte del clip y que CSRT/KCF perdieron el objetivo o se desviaron a objetos del escenario. Por tanto, **ninguno de esos resultados controla el recorte de producción**.
+## Configuración OAuth y secretos
 
-La identificación autónoma y persistente del protagonista de GTA V sigue en desarrollo. No se presenta la detección genérica de personas como reconocimiento de identidad. Hasta validar un método específico con gameplay real, el modo seguro preserva toda la imagen.
+Habilitar Google Drive API y YouTube Data API v3 en Google Cloud. Crear credenciales OAuth y autorizar la misma cuenta que administra la carpeta de Drive y el canal de YouTube.
 
-## Requisitos
+Scopes que debe conceder el consentimiento OAuth:
 
-- macOS, Python 3.11+ y FFmpeg/ffprobe.
-- Instalación: `brew install ffmpeg`, `python3 -m venv .venv`, `source .venv/bin/activate`, `pip install -e .`.
+- https://www.googleapis.com/auth/drive
+- https://www.googleapis.com/auth/youtube.upload
+- https://www.googleapis.com/auth/youtube.readonly
 
-## Uso
+Guardar en GitHub Actions Secrets:
 
-Valores predeterminados: preset viral, audio normalizado y recorte vertical `center`.
+- GOOGLE_CLIENT_ID
+- GOOGLE_CLIENT_SECRET
+- GOOGLE_REFRESH_TOKEN
+- GOOGLE_DRIVE_INPUT_FOLDER_ID
 
-```bash
-compadre-shorts input.mp4 --output renders --duration 60
-```
+No compartir la contraseña de Google ni incluir credenciales en el repositorio. La cuenta autorizada debe tener acceso de edición a la carpeta ENTRADA y permisos de publicación en el canal.
 
-Alternativa para conservar toda la imagen (incluye fondo desenfocado):
+**Importante:** los proyectos OAuth externos que permanecen en estado Testing emiten refresh tokens que caducan a los 7 días cuando solicitan estos scopes. Para automatización diaria continua, hay que resolver el estado de publicación/verificación del proyecto OAuth o renovar la autorización cuando caduque. No se debe asumir que un token de pruebas será permanente.
 
-```bash
-compadre-shorts input.mp4 --output renders-center --framing safe
-```
+## Límites y capacidades actuales
 
-Opciones `--style clean|viral`, `--audio-processing original|normalize`, `--framing center|safe`, `--mode sequential|smart`.
-
-La normalización ajusta sonoridad y picos; no elimina ruido ni separa efectos. El modo `smart` todavía segmenta por intervalos y no detecta semánticamente persecuciones, tiroteos ni humor.
-
-## Lo que aún no hace
-
-- No identifica de forma fiable al protagonista en todos los gameplays.
-- No selecciona automáticamente los mejores momentos.
-- No genera subtítulos ni diálogos inventados.
-- No añade música ni efectos externos.
-- No publica en YouTube; una futura publicación requerirá OAuth y autorización explícita.
-
-## Criterio editorial y seguridad
-
-Revisar cada clip antes de publicarlo. Usar gameplay propio/autorizado y música/SFX con licencia. No subir vídeos, tokens, claves ni archivos `.env` al repositorio. No se promete viralidad ni monetización.
+- Los runners alojados de GitHub tienen un límite máximo de 6 horas por trabajo. Un vídeo de 60 minutos debe caber, pero el tiempo depende del tamaño, códec y carga del render.
+- Se publican hasta 10 clips por gameplay. El sistema actual los segmenta de forma programada; todavía no reconoce semánticamente las mejores jugadas, persecuciones o momentos cómicos.
+- El encuadre safe no es seguimiento automático del protagonista. Preserva la imagen completa para evitar cortar la acción mientras se valida un tracker específico de gameplay.
+- Los archivos de salida y el manifiesto quedan como artefacto del workflow durante 7 días; no se conserva una copia permanente en Drive.

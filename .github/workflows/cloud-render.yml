@@ -1,0 +1,116 @@
+name: Cloud video render
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_key:
+        description: "Object key of the source video inside the private R2 bucket"
+        required: true
+        type: string
+      clip_seconds:
+        description: "Maximum duration of each clip in seconds"
+        required: true
+        default: "60"
+        type: string
+      max_clips:
+        description: "Maximum number of clips to render"
+        required: true
+        default: "10"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-render-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      AWS_EC2_METADATA_DISABLED: "true"
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+    steps:
+      - name: Validate configuration and inputs
+        env:
+          SOURCE_KEY: ${{ inputs.source_key }}
+          CLIP_SECONDS: ${{ inputs.clip_seconds }}
+          MAX_CLIPS: ${{ inputs.max_clips }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import PurePosixPath
+          key = os.environ["SOURCE_KEY"]
+          p = PurePosixPath(key)
+          if not key or key.startswith("/") or ".." in p.parts:
+              raise SystemExit("source_key must be a relative object key inside the configured bucket")
+          if not all(os.environ.get(k) for k in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "R2_ACCOUNT_ID", "R2_BUCKET")):
+              raise SystemExit("Missing R2 repository secrets. Configure R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY.")
+          for name, low, high in (("CLIP_SECONDS", 15, 180), ("MAX_CLIPS", 1, 30)):
+              value = int(os.environ[name])
+              if not low <= value <= high:
+                  raise SystemExit(f"{name} must be between {low} and {high}")
+          PY
+
+      - name: Install FFmpeg and AWS CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg awscli
+
+      - name: Download source privately from R2
+        env:
+          SOURCE_KEY: ${{ inputs.source_key }}
+        run: |
+          mkdir -p work/output
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws s3 cp "s3://${R2_BUCKET}/${SOURCE_KEY}" work/source.mp4 --endpoint-url "$ENDPOINT"
+          SIZE=$(stat -c%s work/source.mp4)
+          if [ "$SIZE" -gt 12000000000 ]; then
+            echo "Source exceeds the 12 GB safety limit for this runner."
+            exit 1
+          fi
+          ffprobe -v error -show_entries format=duration -of csv=p=0 work/source.mp4 > work/duration.txt
+          cat work/duration.txt
+
+      - name: Render vertical clips
+        env:
+          CLIP_SECONDS: ${{ inputs.clip_seconds }}
+          MAX_CLIPS: ${{ inputs.max_clips }}
+        run: |
+          python - <<'PY'
+          import os, subprocess
+          duration = float(open("work/duration.txt").read().strip())
+          clip = int(os.environ["CLIP_SECONDS"])
+          limit = int(os.environ["MAX_CLIPS"])
+          count = min(int(duration // clip), limit)
+          if count < 1:
+              raise SystemExit("Source is shorter than one complete clip.")
+          for i in range(count):
+              start = i * clip
+              out = f"work/output/short_{i+1:03d}.mp4"
+              cmd = [
+                  "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+                  "-ss", str(start), "-i", "work/source.mp4", "-t", str(clip),
+                  "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
+                  "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
+                  "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                  "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k",
+                  "-movflags", "+faststart", out
+              ]
+              subprocess.run(cmd, check=True)
+              print(f"Rendered clip {i+1}/{count}")
+          PY
+
+      - name: Upload results privately to R2
+        run: |
+          cd work
+          zip -qr compadre-shorts-${{ github.run_number }}.zip output
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws s3 cp "compadre-shorts-${{ github.run_number }}.zip" "s3://${R2_BUCKET}/outputs/${{ github.run_id }}/compadre-shorts.zip" --endpoint-url "$ENDPOINT"
+          echo "Results uploaded to private R2 path: outputs/${{ github.run_id }}/compadre-shorts.zip"
