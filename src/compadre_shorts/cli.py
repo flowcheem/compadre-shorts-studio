@@ -45,6 +45,27 @@ def probe_has_audio(path: Path, ffprobe: str) -> bool:
 def build_segments(
     total: float, chunk: float, minimum: float, max_segments: int | None = None
 ) -> list[tuple[float, float]]:
+    if total <= 0 or chunk <= 0 or minimum <= 0:
+        return []
+    if max_segments is not None and max_segments <= 0:
+        return []
+
+    # When the requested clip cap is lower than the number of available
+    # segments, spread the clips across the complete recording instead of
+    # taking only the opening minutes of a one-hour gameplay.
+    if max_segments is not None and total > chunk * max_segments:
+        count = max_segments
+        last_start = max(0.0, total - chunk)
+        if count == 1:
+            starts = [0.0]
+        else:
+            starts = [last_start * i / (count - 1) for i in range(count)]
+        return [
+            (round(start, 3), min(chunk, total - start))
+            for start in starts
+            if min(chunk, total - start) >= minimum
+        ]
+
     segments: list[tuple[float, float]] = []
     start = 0.0
     index = 0
