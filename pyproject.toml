@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "compadre-shorts-studio"
-version = "0.1.0"
-description = "Local workflow for preparing vertical gameplay clips"
+version = "0.4.0"
+description = "Batch-ready workflow for preparing vertical gameplay clips"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
