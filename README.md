@@ -1,34 +1,47 @@
 # Compadre Shorts Studio
 
-## Google Drive cloud intake
+## Flujo cloud
 
-- Copia los vídeos de PlayStation a una carpeta de Google Drive configurada como ENTRADA.
-- El workflow revisa la carpeta cada 15 minutos y solo procesa vídeos sin cambios durante al menos 10 minutos.
-- Toma un único vídeo pendiente por ejecución para evitar concurrencia sobre el mismo original.
-- Descarga y renderiza en GitHub Actions; el Mac no participa.
-- Los renders quedan como artefacto privado del workflow durante 7 días.
-- El original no se borra durante la descarga ni el renderizado.
+1. Copia el gameplay de PlayStation en la carpeta ENTRADA de Google Drive.
+2. GitHub Actions revisa Drive cada 15 minutos y solo toma archivos sin cambios durante 10 minutos.
+3. Descarga un único vídeo y lo procesa en un runner cloud; no utiliza el Mac.
+4. Renderiza hasta 10 clips verticales de 60 segundos con encuadre safe (conserva toda la imagen sobre fondo desenfocado).
+5. Publica cada clip como público en el canal autorizado, con título, descripción y etiquetas.
+6. Verifica el procesamiento de todos los Shorts y solo entonces elimina el original de Drive.
+7. Guarda los renders y el manifiesto de publicación como artefacto privado durante 7 días.
 
-## Limpieza segura
+## Seguridad, reintentos y duplicados
 
-El comando cleanup-after-publish exige el ID de un vídeo de YouTube y consulta YouTube Data API. Solo elimina permanentemente el original si YouTube confirma simultáneamente processingStatus=succeeded y uploadStatus=processed, y si el archivo está en un estado Compadre permitido. Un error de render o publicación nunca autoriza el borrado.
+- Si falla la descarga, el render, una publicación o la verificación de YouTube, el original no se elimina.
+- Los IDs de los Shorts publicados se guardan como propiedades privadas del archivo de Drive. Si una ejecución se interrumpe, el siguiente intento verifica y reutiliza esos IDs en vez de volver a publicar los mismos clips.
+- La limpieza solo se permite cuando todos los clips de la ejecución han pasado la verificación de YouTube. El borrado de Drive es permanente.
+- Los trabajos de Drive se procesan de uno en uno. Los estados de procesamiento abandonados se pueden reintentar después de 8 horas.
+- Los títulos y etiquetas actuales son plantillas genéricas; no describen automáticamente el contenido específico de cada jugada.
 
-La limpieza todavía no se ejecuta automáticamente desde el workflow: falta conectar y probar la etapa de publicación OAuth de YouTube. Hasta entonces, los originales se conservan.
+## Configuración OAuth y secretos
 
-## Secretos OAuth requeridos
+Habilitar Google Drive API y YouTube Data API v3 en Google Cloud. Crear credenciales OAuth y autorizar la misma cuenta que administra la carpeta de Drive y el canal de YouTube.
 
-Configurar OAuth en Google Cloud, habilitar Google Drive API y autorizar la cuenta propietaria de la carpeta. Guardar estos GitHub Actions secrets:
+Scopes que debe conceder el consentimiento OAuth:
+
+- https://www.googleapis.com/auth/drive
+- https://www.googleapis.com/auth/youtube.upload
+- https://www.googleapis.com/auth/youtube.readonly
+
+Guardar en GitHub Actions Secrets:
 
 - GOOGLE_CLIENT_ID
 - GOOGLE_CLIENT_SECRET
 - GOOGLE_REFRESH_TOKEN
 - GOOGLE_DRIVE_INPUT_FOLDER_ID
 
-El token debe tener permisos para listar, descargar, actualizar propiedades y borrar archivos de Drive, y leer el estado de procesamiento de YouTube. No compartir la contraseña de Google.
+No compartir la contraseña de Google ni incluir credenciales en el repositorio. La cuenta autorizada debe tener acceso de edición a la carpeta ENTRADA y permisos de publicación en el canal.
 
-## Límites y estado
+**Importante:** los proyectos OAuth externos que permanecen en estado Testing emiten refresh tokens que caducan a los 7 días cuando solicitan estos scopes. Para automatización diaria continua, hay que resolver el estado de publicación/verificación del proyecto OAuth o renovar la autorización cuando caduque. No se debe asumir que un token de pruebas será permanente.
 
-- Los runners alojados de GitHub tienen un límite de 6 horas por trabajo. El vídeo de una hora debe caber; depende del códec, tamaño y carga de render.
-- Render actual: segmentos de 60 segundos, máximo 10, encuadre safe (imagen completa sobre fondo desenfocado).
-- No hay todavía seguimiento semántico fiable del protagonista.
-- La publicación automática de YouTube y el borrado automático solo se activarán después de validar la integración OAuth de YouTube.
+## Límites y capacidades actuales
+
+- Los runners alojados de GitHub tienen un límite máximo de 6 horas por trabajo. Un vídeo de 60 minutos debe caber, pero el tiempo depende del tamaño, códec y carga del render.
+- Se publican hasta 10 clips por gameplay. El sistema actual los segmenta de forma programada; todavía no reconoce semánticamente las mejores jugadas, persecuciones o momentos cómicos.
+- El encuadre safe no es seguimiento automático del protagonista. Preserva la imagen completa para evitar cortar la acción mientras se valida un tracker específico de gameplay.
+- Los archivos de salida y el manifiesto quedan como artefacto del workflow durante 7 días; no se conserva una copia permanente en Drive.
