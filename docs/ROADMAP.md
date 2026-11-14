@@ -1,31 +1,34 @@
 # Hoja de ruta
 
-## Fase 1 — MVP local
-- [x] Definir flujo y criterios editoriales
-- [ ] CLI con FFmpeg/ffprobe
-- [ ] Exportación vertical 1080×1920
-- [ ] Manifiesto JSON por lote
-- [ ] Prueba con vídeos reales en macOS
+## Fase 1 — Preparación local
+- [x] CLI con FFmpeg/ffprobe
+- [x] Exportación vertical 1080×1920
+- [x] Manifiesto JSON por lote
+- [x] Prueba con gameplay real en macOS
+- [x] Preset viral y normalización de audio
+- [x] Encuadre seguro que conserva el fotograma completo
+- [ ] Validar render seguro con la prueba local de 3 minutos
 
-## Fase 2 — Panel y revisión
-- Cola de trabajos, previsualización, selección/rechazo y edición de puntos de entrada/salida.
-- Historial de clips y estados: pendiente, aprobado, descartado, publicado.
+## Fase 2 — Identificación autónoma del protagonista
+- [x] Medir límites de Apple Vision, CSRT y KCF con GTA V
+- [ ] Evaluar detector de personajes en gameplay renderizado
+- [ ] Asociación temporal y reidentificación del mismo personaje
+- [ ] Recuperación tras oclusiones/cambios de escena
+- [ ] Medida de confianza y fallback automático al encuadre seguro
+- [ ] Validar sin selección manual en clips de 3 minutos y después en un gameplay largo
 
-## Fase 3 — Selección inteligente
+## Fase 3 — Selección inteligente de momentos
 - Analizar señales visuales y de audio para proponer persecuciones, tiroteos, acrobacias, humor, sorpresas y escenas cinematográficas.
-- La IA propone; la persona revisa y aprueba.
-- No etiquetar una escena como detectada si el sistema solo ha dividido el vídeo por tiempo.
+- Puntuar candidatos con razones verificables; no confundir intervalos con detección semántica.
 
 ## Fase 4 — Acabado
-- Subtítulos cuando exista diálogo o narración.
-- Textos dinámicos, música y efectos con licencia.
-- Voz sintética opcional, basada solo en hechos visibles/verificados.
+- Subtítulos solo cuando exista diálogo/narración real.
+- Textos dinámicos de impacto sin presentarlos como transcripción.
+- Miniaturas y metadatos sugeridos.
 
 ## Fase 5 — YouTube
 - OAuth de Google, permisos mínimos y tokens fuera del repositorio.
 - Publicación solo tras aprobación explícita.
-- Programación gradual, evitando publicar decenas de clips de golpe.
 
 ## Fase 6 — Métricas
-- Seguimiento de visualizaciones, retención, interacción y rendimiento por tipo de momento.
-- Aprender de resultados sin prometer viralidad.
+- Seguimiento de visualizaciones, retención e interacción, sin prometer viralidad.

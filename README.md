@@ -1,77 +1,53 @@
 # Compadre Shorts Studio
 
-Fábrica local de Shorts para el canal **Compadre Gameplay**. Prepara clips verticales a partir de gameplays propios, con revisión humana antes de publicarlos.
+Fábrica local de Shorts para **Compadre Gameplay**. Prepara clips verticales desde gameplays propios, con revisión antes de publicar.
 
-## Enfoque
+## Estado v0.3
 
-- Procesamiento local con FFmpeg en macOS; los vídeos pesados no se renderizan en GitHub Actions.
-- Salida vertical 9:16 a 1080×1920.
-- Preset visual `viral` con contraste, saturación y enfoque moderadamente reforzados; preset `clean` sin ese tratamiento.
-- Procesamiento de audio opcional: normalización de sonoridad y control de picos con FFmpeg.
-- Cortes configurables y manifiesto JSON para organizar cada lote.
-- Revisión humana obligatoria antes de publicar.
-- Publicación en YouTube solo en una fase posterior, mediante OAuth y autorización explícita.
+- Procesamiento local con FFmpeg; los vídeos no se renderizan en GitHub Actions.
+- Salida 1080×1920, preset visual `viral` y audio normalizado por defecto.
+- **Encuadre `safe` por defecto:** conserva el fotograma completo en primer plano y utiliza una ampliación desenfocada como fondo. Evita cortar al personaje cuando el seguimiento no es fiable.
+- Encuadre `center` disponible para compatibilidad, pero puede cortar la acción.
+- FFmpeg se ejecuta con `-nostdin` para evitar que consuma accidentalmente entradas del Terminal.
+- Manifiesto JSON con parámetros, estado de revisión y limitaciones conocidas.
+
+## Importante: seguimiento del protagonista
+
+Las pruebas locales mostraron que Apple Vision solo detectó personas en una parte del clip y que CSRT/KCF perdieron el objetivo o se desviaron a objetos del escenario. Por tanto, **ninguno de esos resultados controla el recorte de producción**.
+
+La identificación autónoma y persistente del protagonista de GTA V sigue en desarrollo. No se presenta la detección genérica de personas como reconocimiento de identidad. Hasta validar un método específico con gameplay real, el modo seguro preserva toda la imagen.
 
 ## Requisitos
 
-- macOS
-- Python 3.11+
-- FFmpeg y ffprobe
-- Espacio de disco para los originales y los vídeos generados
-
-## Instalación
-
-```bash
-brew install ffmpeg
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
+- macOS, Python 3.11+ y FFmpeg/ffprobe.
+- Instalación: `brew install ffmpeg`, `python3 -m venv .venv`, `source .venv/bin/activate`, `pip install -e .`.
 
 ## Uso
 
-Preparar clips de 60 segundos con el estilo viral y audio normalizado (valores predeterminados):
+Valores predeterminados: preset viral, audio normalizado y encuadre seguro.
 
 ```bash
 compadre-shorts input.mp4 --output renders --duration 60
 ```
 
-Elegir un aspecto limpio y conservar el nivel de audio original:
+Compatibilidad con el antiguo recorte centrado (puede cortar personajes):
 
 ```bash
-compadre-shorts input.mp4 --output renders --style clean --audio-processing original
+compadre-shorts input.mp4 --output renders-center --framing center
 ```
 
-La normalización usa un objetivo de sonoridad y un limitador de picos. No equivale a eliminar ruido, separar efectos ni mezclar música. Si el original no tiene audio, el programa lo registra en el manifiesto.
+Opciones `--style clean|viral`, `--audio-processing original|normalize`, `--framing safe|center`, `--mode sequential|smart`.
 
-## Qué hace y qué no hace esta versión
+La normalización ajusta sonoridad y picos; no elimina ruido ni separa efectos. El modo `smart` todavía segmenta por intervalos y no detecta semánticamente persecuciones, tiroteos ni humor.
 
-- Convierte y recorta el vídeo en formato vertical 1080×1920.
-- Aplica un tratamiento visual moderado según el preset.
-- Puede equilibrar la sonoridad y limitar picos del audio original del juego.
-- El modo `smart` sigue siendo una segmentación por intervalos: **no** detecta semánticamente persecuciones, tiroteos ni momentos divertidos.
+## Lo que aún no hace
+
+- No identifica de forma fiable al protagonista en todos los gameplays.
+- No selecciona automáticamente los mejores momentos.
 - No genera subtítulos ni diálogos inventados.
-- No añade música ni efectos de sonido externos.
-- No selecciona automáticamente los mejores momentos todavía.
+- No añade música ni efectos externos.
+- No publica en YouTube; una futura publicación requerirá OAuth y autorización explícita.
 
-## Criterio editorial
+## Criterio editorial y seguridad
 
-La duración final debe depender del potencial del momento, no de una duración rígida. Como orientación: humor o sorpresa 15–90 s; persecuciones y tiroteos 45–180 s; escenas cinematográficas 60–180 s. Hook en los primeros 1–3 segundos, progresión clara y desenlace fuerte. Revisar cada clip antes de publicar.
-
-## Seguridad y derechos
-
-- No subir vídeos originales, renders, claves, tokens OAuth ni archivos `.env` al repositorio.
-- Usar únicamente gameplay propio o autorizado.
-- Utilizar música y efectos con licencias adecuadas.
-- No publicar lotes masivos sin revisión.
-- No se promete viralidad ni monetización.
-
-## Próximas fases
-
-1. Análisis de candidatos por ventanas usando señales visuales y de audio, con puntuación explicable y revisión humana.
-2. Plantillas de texto de impacto configurables, sin atribuirlas como transcripción.
-3. Miniaturas y metadatos sugeridos para YouTube.
-4. Flujo de publicación opcional con OAuth y confirmación explícita.
-
-- [Hoja de ruta](docs/ROADMAP.md)
-- [Criterios editoriales](docs/EDITORIAL.md)
+Revisar cada clip antes de publicarlo. Usar gameplay propio/autorizado y música/SFX con licencia. No subir vídeos, tokens, claves ni archivos `.env` al repositorio. No se promete viralidad ni monetización.

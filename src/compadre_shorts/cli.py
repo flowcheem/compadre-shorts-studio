@@ -1,4 +1,4 @@
-"""Local FFmpeg-based clip preparation for Compadre Shorts Studio v0.2."""
+"""Local FFmpeg-based clip preparation for Compadre Shorts Studio v0.3."""
 
 from __future__ import annotations
 
@@ -56,6 +56,42 @@ def build_segments(total: float, chunk: float, minimum: float) -> list[tuple[flo
     return segments
 
 
+def build_video_filters(style: str, framing: str) -> tuple[list[str] | None, str | None]:
+    """Return (simple filters, complex filter graph).
+
+    Safe framing preserves every source pixel in a fitted foreground over a
+    blurred full-frame background. It is deliberately the default until
+    autonomous player identity tracking is validated on GTA gameplay.
+    """
+    if framing == "center":
+        filters = [
+            "scale=1080:1920:force_original_aspect_ratio=increase",
+            "crop=1080:1920",
+            "setsar=1",
+        ]
+        if style == "viral":
+            filters.extend([
+                "eq=contrast=1.10:saturation=1.20:brightness=0.01",
+                "unsharp=5:5:0.55:3:3:0.25",
+            ])
+        return filters, None
+
+    grade = (
+        ",eq=contrast=1.10:saturation=1.20:brightness=0.01"
+        if style == "viral" else ""
+    )
+    sharpen = ",unsharp=5:5:0.55:3:3:0.25" if style == "viral" else ""
+    graph = (
+        "[0:v]split=2[bgsrc][fgsrc];"
+        f"[bgsrc]scale=1080:1920:force_original_aspect_ratio=increase,"
+        f"crop=1080:1920,boxblur=24:8{grade}[bg];"
+        f"[fgsrc]scale=1080:1920:force_original_aspect_ratio=decrease"
+        f"{grade}{sharpen},setsar=1[fg];"
+        "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[vout]"
+    )
+    return None, graph
+
+
 def render_clip(
     ffmpeg: str,
     source: Path,
@@ -64,28 +100,28 @@ def render_clip(
     length: float,
     style: str,
     audio_processing: str,
+    framing: str,
     has_audio: bool,
 ) -> None:
-    video_filters = [
-        "scale=1080:1920:force_original_aspect_ratio=increase",
-        "crop=1080:1920",
-        "setsar=1",
-    ]
-    if style == "viral":
-        # A restrained punchier grade; no scene understanding or fake captions.
-        video_filters.extend([
-            "eq=contrast=1.10:saturation=1.20:brightness=0.01",
-            "unsharp=5:5:0.55:3:3:0.25",
-        ])
-
+    simple_filters, complex_graph = build_video_filters(style, framing)
     command = [
-        ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+        ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
         "-ss", f"{start:.3f}", "-i", str(source), "-t", f"{length:.3f}",
-        "-map", "0:v:0", "-map", "0:a?",
-        "-vf", ",".join(video_filters),
+    ]
+    if complex_graph:
+        command.extend([
+            "-filter_complex", complex_graph,
+            "-map", "[vout]", "-map", "0:a?",
+        ])
+    else:
+        command.extend([
+            "-map", "0:v:0", "-map", "0:a?",
+            "-vf", ",".join(simple_filters or []),
+        ])
+    command.extend([
         "-c:v", "libx264", "-preset", "medium", "-crf", "21",
         "-pix_fmt", "yuv420p",
-    ]
+    ])
     if has_audio and audio_processing == "normalize":
         command.extend([
             "-af", "loudnorm=I=-16:TP=-1.5:LRA=11,alimiter=limit=0.95",
@@ -110,10 +146,15 @@ def main() -> int:
     parser.add_argument("--min-seconds", type=float, default=15.0,
                         help="Discard a final remainder shorter than this (default: 15)")
     parser.add_argument("--style", choices=("clean", "viral"), default="viral",
-                        help="Visual preset: clean or punchier viral grade (default: viral)")
+                        help="Visual preset: clean or viral (default: viral)")
     parser.add_argument("--audio-processing", choices=("original", "normalize"),
                         default="normalize",
-                        help="Keep original audio level or apply loudness/peak control")
+                        help="Keep original audio or normalize loudness and control peaks")
+    parser.add_argument(
+        "--framing", choices=("safe", "center"), default="safe",
+        help=("safe preserves the complete source over a blurred background; "
+              "center crops to fill 9:16 and can cut off gameplay action"),
+    )
     args = parser.parse_args()
 
     try:
@@ -138,20 +179,23 @@ def main() -> int:
         stem = source.stem
         manifest = {
             "project": "Compadre Shorts Studio",
-            "version": "0.2.0",
+            "version": "0.3.0",
             "source": str(source),
             "source_duration_seconds": round(total, 3),
             "mode": args.mode,
             "style": args.style,
+            "framing": args.framing,
             "audio_processing": args.audio_processing if has_audio else "no_audio_stream",
             "segment_target_seconds": args.duration,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "editorial_status": "review_required",
             "note": (
-                "The smart mode is currently interval-based and does not perform "
-                "semantic scene detection."
-                if args.mode == "smart"
-                else "Sequential interval cuts; review every clip before publishing."
+                "Safe framing preserves the complete source image over a blurred background. "
+                "Autonomous GTA player identity tracking is not yet validated; no untrusted "
+                "CSRT/KCF or Apple Vision crop is applied. Smart mode remains interval-based."
+                if args.framing == "safe"
+                else "Center crop fills 9:16 and may cut off gameplay action. "
+                     "Smart mode remains interval-based."
             ),
             "clips": [],
         }
@@ -162,7 +206,7 @@ def main() -> int:
             print(f"[{number}/{len(segments)}] Rendering {filename}")
             render_clip(
                 ffmpeg, source, destination, start, length,
-                args.style, args.audio_processing, has_audio,
+                args.style, args.audio_processing, args.framing, has_audio,
             )
             manifest["clips"].append({
                 "file": filename,
@@ -172,8 +216,10 @@ def main() -> int:
             })
 
         manifest_path = output_dir / "manifest.json"
-        manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
-                                 encoding="utf-8")
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
         print(f"Done. {len(segments)} clips saved in {output_dir}")
         print(f"Manifest: {manifest_path}")
         return 0
