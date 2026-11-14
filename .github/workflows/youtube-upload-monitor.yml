@@ -4,11 +4,6 @@ on:
   schedule:
     - cron: '*/15 * * * *'
   workflow_dispatch:
-    inputs:
-      channel_id:
-        description: 'YouTube channel ID (UC...)'
-        required: false
-        type: string
 
 permissions:
   contents: write
@@ -22,7 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
-      CHANNEL_ID: ${{ inputs.channel_id || vars.YOUTUBE_CHANNEL_ID }}
+      CHANNEL_ID: UCIj7fOChNkJpurjusPZpSTw
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -40,7 +35,7 @@ jobs:
 
           channel_id = os.environ.get('CHANNEL_ID', '').strip()
           if not channel_id.startswith('UC'):
-              raise SystemExit('Missing/invalid channel ID. Set repository variable YOUTUBE_CHANNEL_ID to the channel ID (UC...) or provide channel_id when manually starting this workflow.')
+              raise SystemExit('Missing/invalid channel ID configured in this workflow.')
 
           feed_url = f'https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}'
           request = urllib.request.Request(feed_url, headers={'User-Agent': 'CompadreShortsStudio/0.1'})
