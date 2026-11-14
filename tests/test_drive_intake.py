@@ -58,7 +58,7 @@ class CleanupSafetyTests(unittest.TestCase):
 
         drive_intake.cleanup_after_publish("token", "drive123", "yt123")
 
-        patch_props.assert_called_once()
+        patch_props.assert_not_called()
         req = urlopen.call_args.args[0]
         self.assertEqual(req.get_method(), "DELETE")
         self.assertIn("/files/drive123", req.full_url)
