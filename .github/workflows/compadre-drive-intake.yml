@@ -1,0 +1,110 @@
+name: Compadre Drive intake
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compadre-drive-intake
+  cancel-in-progress: false
+
+jobs:
+  intake-and-render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - name: Check out pipeline
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check Google Drive OAuth configuration
+        id: preflight
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          GOOGLE_DRIVE_INPUT_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_INPUT_FOLDER_ID }}
+        run: |
+          if [ -z "$GOOGLE_CLIENT_ID" ] || [ -z "$GOOGLE_CLIENT_SECRET" ] || [ -z "$GOOGLE_REFRESH_TOKEN" ] || [ -z "$GOOGLE_DRIVE_INPUT_FOLDER_ID" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Google Drive secrets are not configured yet; safely skipping this scheduled run."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python
+        if: steps.preflight.outputs.configured == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg and Compadre
+        if: steps.preflight.outputs.configured == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          python -m pip install .
+
+      - name: Download one completed gameplay from Google Drive
+        id: intake
+        if: steps.preflight.outputs.configured == 'true'
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          GOOGLE_DRIVE_INPUT_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_INPUT_FOLDER_ID }}
+        run: |
+          mkdir -p work
+          python -m compadre_shorts.drive_intake download --output work/source.mp4 --stable-minutes 10 | tee work/intake.json
+          if [ ! -s work/source.mp4 ]; then
+            echo "has_source=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_source=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Render Shorts in cloud
+        if: steps.preflight.outputs.configured == 'true' && steps.intake.outputs.has_source == 'true'
+        run: |
+          python -m compadre_shorts.cli work/source.mp4 \
+            --output work/shorts --duration 60 --max-clips 10 \
+            --min-seconds 20 --style viral --audio-processing normalize --framing safe
+
+      - name: Mark Drive source as rendered
+        if: steps.preflight.outputs.configured == 'true' && steps.intake.outputs.has_source == 'true'
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+        run: |
+          SOURCE_ID=$(python -c "import json; print(json.load(open('work/intake.json'))['source_file_id'])")
+          python -m compadre_shorts.drive_intake mark-rendered --file-id "$SOURCE_ID"
+
+      - name: Publish every rendered Short and clean Drive only after verification
+        if: steps.preflight.outputs.configured == 'true' && steps.intake.outputs.has_source == 'true'
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+        run: |
+          SOURCE_ID=$(python -c "import json; print(json.load(open('work/intake.json'))['source_file_id'])")
+          SOURCE_NAME=$(python -c "import json; print(json.load(open('work/intake.json'))['source_name'])")
+          python -m compadre_shorts.youtube_publish \
+            --source-file-id "$SOURCE_ID" \
+            --source-name "$SOURCE_NAME" \
+            --clips-dir work/shorts --max-clips 10
+
+      - name: Preserve renders and publication manifest for 7 days
+        if: always() && steps.preflight.outputs.configured == 'true' && steps.intake.outputs.has_source == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: compadre-shorts-${{ github.run_id }}
+          path: work/shorts/
+          if-no-files-found: warn
+          retention-days: 7
+
