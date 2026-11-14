@@ -21,7 +21,7 @@ class RenderPlanningTests(unittest.TestCase):
         simple, graph = build_video_filters("viral", "center")
         self.assertIsNone(graph)
         self.assertIn("crop=1080:1920", simple)
-        self.assertIn("eq=contrast=1.10", simple)
+        self.assertTrue(any(item.startswith("eq=contrast=1.10:") for item in simple))
 
     def test_segments_cover_full_minutes_and_drop_short_remainder(self):
         self.assertEqual(
