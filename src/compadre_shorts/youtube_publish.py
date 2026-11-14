@@ -70,7 +70,6 @@ def upload_one(t, path, title, description, tags):
         "Authorization":f"Bearer {t}",
         "Content-Type":"video/mp4",
         "Content-Length":str(size),
-        "Content-Range":f"bytes 0-{size-1}/{size}",
     },method="PUT")
     try:
         with urlopen(put,timeout=900) as response:
