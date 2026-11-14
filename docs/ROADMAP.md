@@ -1,4 +1,4 @@
-# Hoja de ruta
+# Hoja de ruta — objetivo: herramienta de producción reutilizable para GTA V/GTA VI
 
 ## Fase 1 — Preparación local
 - [x] CLI con FFmpeg/ffprobe
@@ -6,8 +6,9 @@
 - [x] Manifiesto JSON por lote
 - [x] Prueba con gameplay real en macOS
 - [x] Preset viral y normalización de audio
-- [x] Encuadre seguro que conserva el fotograma completo
-- [ ] Validar render seguro con la prueba local de 3 minutos
+- [x] Encuadre vertical 9:16 con recorte central como valor predeterminado
+- [x] Encuadre seguro alternativo que conserva el fotograma completo
+- [ ] Validar render `center` con la prueba local de 3 minutos
 
 ## Fase 2 — Identificación autónoma del protagonista
 - [x] Medir límites de Apple Vision, CSRT y KCF con GTA V
@@ -18,6 +19,8 @@
 - [ ] Validar sin selección manual en clips de 3 minutos y después en un gameplay largo
 
 ## Fase 3 — Selección inteligente de momentos
+- [ ] Procesamiento por lotes de múltiples archivos de entrada
+- [ ] Detección de eventos independiente del título del juego (GTA V/GTA VI y otros)
 - Analizar señales visuales y de audio para proponer persecuciones, tiroteos, acrobacias, humor, sorpresas y escenas cinematográficas.
 - Puntuar candidatos con razones verificables; no confundir intervalos con detección semántica.
 

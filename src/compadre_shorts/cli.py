@@ -151,9 +151,9 @@ def main() -> int:
                         default="normalize",
                         help="Keep original audio or normalize loudness and control peaks")
     parser.add_argument(
-        "--framing", choices=("safe", "center"), default="safe",
-        help=("safe preserves the complete source over a blurred background; "
-              "center crops to fill 9:16 and can cut off gameplay action"),
+        "--framing", choices=("safe", "center"), default="center",
+        help=("center fills the 9:16 frame without blurred side/top bands and may crop action; "
+              "safe preserves the full source over a blurred background"),
     )
     args = parser.parse_args()
 
@@ -179,7 +179,7 @@ def main() -> int:
         stem = source.stem
         manifest = {
             "project": "Compadre Shorts Studio",
-            "version": "0.3.0",
+            "version": "0.4.0",
             "source": str(source),
             "source_duration_seconds": round(total, 3),
             "mode": args.mode,
@@ -194,7 +194,7 @@ def main() -> int:
                 "Autonomous GTA player identity tracking is not yet validated; no untrusted "
                 "CSRT/KCF or Apple Vision crop is applied. Smart mode remains interval-based."
                 if args.framing == "safe"
-                else "Center crop fills 9:16 and may cut off gameplay action. "
+                else "Center crop fills the 9:16 frame and may cut off gameplay action. "
                      "Smart mode remains interval-based."
             ),
             "clips": [],

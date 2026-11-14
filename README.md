@@ -2,12 +2,12 @@
 
 Fábrica local de Shorts para **Compadre Gameplay**. Prepara clips verticales desde gameplays propios, con revisión antes de publicar.
 
-## Estado v0.3
+## Estado v0.4 — base de producción
 
 - Procesamiento local con FFmpeg; los vídeos no se renderizan en GitHub Actions.
 - Salida 1080×1920, preset visual `viral` y audio normalizado por defecto.
-- **Encuadre `safe` por defecto:** conserva el fotograma completo en primer plano y utiliza una ampliación desenfocada como fondo. Evita cortar al personaje cuando el seguimiento no es fiable.
-- Encuadre `center` disponible para compatibilidad, pero puede cortar la acción.
+- **Encuadre `center` por defecto:** llena el lienzo 9:16 (1080×1920), sin bandas difuminadas. Puede recortar partes de la acción.
+- Encuadre `safe` disponible como alternativa de conservación completa, con fondo ampliado y desenfocado.
 - FFmpeg se ejecuta con `-nostdin` para evitar que consuma accidentalmente entradas del Terminal.
 - Manifiesto JSON con parámetros, estado de revisión y limitaciones conocidas.
 
@@ -24,19 +24,19 @@ La identificación autónoma y persistente del protagonista de GTA V sigue en de
 
 ## Uso
 
-Valores predeterminados: preset viral, audio normalizado y encuadre seguro.
+Valores predeterminados: preset viral, audio normalizado y recorte vertical `center`.
 
 ```bash
 compadre-shorts input.mp4 --output renders --duration 60
 ```
 
-Compatibilidad con el antiguo recorte centrado (puede cortar personajes):
+Alternativa para conservar toda la imagen (incluye fondo desenfocado):
 
 ```bash
-compadre-shorts input.mp4 --output renders-center --framing center
+compadre-shorts input.mp4 --output renders-center --framing safe
 ```
 
-Opciones `--style clean|viral`, `--audio-processing original|normalize`, `--framing safe|center`, `--mode sequential|smart`.
+Opciones `--style clean|viral`, `--audio-processing original|normalize`, `--framing center|safe`, `--mode sequential|smart`.
 
 La normalización ajusta sonoridad y picos; no elimina ruido ni separa efectos. El modo `smart` todavía segmenta por intervalos y no detecta semánticamente persecuciones, tiroteos ni humor.
 
