@@ -26,7 +26,7 @@ class RenderPlanningTests(unittest.TestCase):
     def test_max_clips_limits_render_plan(self):
         self.assertEqual(
             build_segments(600, 60, 15, max_segments=3),
-            [(0.0, 60), (60.0, 60), (120.0, 60)],
+            [(0.0, 60), (270.0, 60), (540.0, 60)],
         )
 
     def test_segments_cover_full_minutes_and_drop_short_remainder(self):
