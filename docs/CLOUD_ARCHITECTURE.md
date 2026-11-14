@@ -1,33 +1,36 @@
 # Arquitectura cloud-first de Compadre Shorts Studio
 
 ## Objetivo
-Procesar gameplays fuera del ordenador del usuario, con una cadena automatizada y coste inicial cero. El Mac queda como dispositivo para abrir la web y cargar/descargar archivos; no instala dependencias ni renderiza.
+Procesar gameplays fuera del ordenador del usuario, con coste inicial cero. El Mac será solo un dispositivo para abrir la web y cargar/descargar archivos; no instala dependencias ni renderiza.
 
-## Cadena propuesta
+## Cadena
 
-1. **Interfaz web — Cloudflare Pages (Free).** Panel para crear trabajos, ver estados y descargar resultados.
-2. **API ligera — Cloudflare Worker (Free).** Autenticación, creación de trabajos, validación de metadatos y coordinación. No renderiza vídeo: el límite gratuito de CPU de Workers no sirve para FFmpeg.
-3. **Almacenamiento — Cloudflare R2 (Free tier).** Vídeo original y resultados mediante cargas directas/prefirmadas; evitar pasar archivos grandes por el Worker. Cuota publicada: 10 GB-mes, 1 millón de operaciones clase A y 10 millones clase B; salida de datos sin coste.
-4. **Motor de vídeo — GitHub Actions en runner estándar Ubuntu.** Descarga el objeto de entrada, ejecuta FFmpeg/ffprobe, genera clips y devuelve resultados. Los runners estándar son gratuitos para repositorios públicos; los privados consumen la cuota mensual del plan. Cada trabajo tiene un máximo de 6 horas y el runner Ubuntu estándar ofrece 4 CPU, 16 GB RAM y 14 GB SSD. Esto hace viable un MVP por lotes moderados, no una promesa de procesamiento ilimitado.
-5. **Publicación — YouTube Data API (fase posterior).** OAuth, autorización explícita, secretos fuera del repositorio y control de cuotas/restricciones de Google.
+1. **Interfaz — Cloudflare Pages (Free):** panel para crear trabajos, ver estados y descargar resultados.
+2. **API — Cloudflare Worker (Free):** autenticación, creación de trabajos, validación y coordinación. No renderiza vídeo: el límite gratuito de CPU por solicitud no sirve para FFmpeg.
+3. **Almacenamiento — Cloudflare R2 (Free tier):** originales y resultados privados, con carga/descarga directa y URLs temporales emitidas por el backend. Cuota publicada: 10 GB-mes, 1 millón de operaciones clase A y 10 millones clase B; egreso sin coste.
+4. **Motor — GitHub Actions:** runner Ubuntu estándar ejecuta FFmpeg/ffprobe. El repositorio es público, por lo que los runners estándar son gratuitos. El runner tiene 4 CPU, 16 GB RAM, 14 GB SSD y límite de 6 horas por job.
+5. **Publicación — YouTube Data API:** OAuth, autorización explícita y credenciales guardadas como secretos.
 
-## Primera etapa implementable
-El workflow `.github/workflows/cloud-render.yml` permite lanzar un trabajo remoto desde GitHub Actions proporcionando una URL HTTPS de descarga (idealmente una URL temporal de R2). Produce clips verticales 1080×1920 y los entrega como artefacto descargable. Es una primera prueba real de render cloud, todavía sin interfaz web ni subida automática a R2.
+## Primera etapa: render cloud privado
+El workflow `.github/workflows/cloud-render.yml` toma el nombre de un objeto dentro de un bucket R2 privado, descarga el vídeo usando secretos del repositorio, genera clips verticales y sube el ZIP de resultados al mismo bucket. No publica el vídeo ni los resultados como artefactos públicos de GitHub.
 
-## Límites que debemos respetar
-- Cloudflare Worker no procesa vídeo: en Free tiene 10 ms de CPU por solicitud y 128 MB de memoria.
-- R2 Free tiene 10 GB-mes; un gameplay largo puede superar esa capacidad. Borrar originales y resultados temporales tras la retención acordada.
-- GitHub Actions: runners estándar gratuitos en repos públicos; repos privados dependen de minutos incluidos. Un job no puede superar 6 horas. El runner tiene almacenamiento limitado; validar tamaño antes de descargar.
-- No incluir tokens, URLs prefirmadas, OAuth ni claves en logs, commits o archivos del repositorio.
-- El modo actual de FFmpeg corta por intervalos; todavía NO detecta semánticamente persecuciones, tiroteos, humor ni identifica al protagonista. Esa inteligencia es una fase separada y no se debe anunciar como terminada.
-- No asumir que el plan gratuito soportará producción ilimitada. Medir duración, tamaño, minutos de runner y GB almacenados por trabajo.
+### Secretos que habrá que configurar en GitHub
+- `R2_ACCOUNT_ID`
+- `R2_BUCKET`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
 
-## Orden de implementación
-1. Validar el render remoto desde GitHub Actions.
-2. Conectar Cloudflare R2 con carga directa y transferencia automática de resultados.
-3. Crear el panel Cloudflare Pages + Worker y un mecanismo seguro para disparar trabajos.
-4. Incorporar análisis visual/audio, detección de eventos y seguimiento temporal robusto.
-5. Añadir metadatos, miniaturas, OAuth y publicación YouTube tras autorización.
+La clave R2 debe tener acceso solo al bucket de trabajo. Nunca se pegan claves ni URLs firmadas en el chat, en los inputs del workflow o en el código.
 
-## Estado
-La fase 1 es una prueba funcional de infraestructura, no la aplicación web final. El usuario no necesita ejecutar comandos ni procesar vídeos en su Mac.
+## Límites
+- Cloudflare Worker no procesa vídeo; el plan gratuito limita el tiempo de CPU por solicitud.
+- R2 Free: 10 GB-mes; los originales grandes pueden superar esa capacidad. Definir retención y borrar temporales automáticamente.
+- GitHub Actions: runner limitado a 14 GB de disco y 6 horas por job; el workflow aplica un límite preventivo de 12 GB al vídeo fuente y máximo de 30 clips por ejecución.
+- La selección actual sigue siendo por intervalos. Aún no detecta semánticamente persecuciones, tiroteos, humor ni identifica de forma persistente al protagonista.
+- El plan gratuito permite un MVP y pruebas reales, no procesamiento ilimitado garantizado.
+
+## Orden
+1. Configurar R2 y secretos, y validar un render remoto privado.
+2. Crear panel Cloudflare Pages + Worker y disparo seguro de trabajos.
+3. Añadir análisis visual/audio, detección de eventos y seguimiento temporal robusto.
+4. Añadir metadatos, miniaturas, OAuth y publicación en YouTube tras autorización.
