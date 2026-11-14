@@ -65,7 +65,7 @@ def download_one(t,folder,out,stable_minutes):
                 stale_processing=(time.time()-started) > 8*60*60
             except ValueError:
                 stale_processing=True
-        if time.time()-modified >= stable_minutes*60 and status not in ("published","deleted") and (status!="processing" or stale_processing):
+        if time.time()-modified >= stable_minutes*60 and status not in ("published","deleted","rendered") and (status!="processing" or stale_processing):
             ready.append(f)
     if not ready:
         print("No stable pending video in Drive input folder.")
