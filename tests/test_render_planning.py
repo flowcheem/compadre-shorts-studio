@@ -23,6 +23,12 @@ class RenderPlanningTests(unittest.TestCase):
         self.assertIn("crop=1080:1920", simple)
         self.assertTrue(any(item.startswith("eq=contrast=1.10:") for item in simple))
 
+    def test_max_clips_limits_render_plan(self):
+        self.assertEqual(
+            build_segments(600, 60, 15, max_segments=3),
+            [(0.0, 60), (60.0, 60), (120.0, 60)],
+        )
+
     def test_segments_cover_full_minutes_and_drop_short_remainder(self):
         self.assertEqual(
             build_segments(180, 60, 15),
