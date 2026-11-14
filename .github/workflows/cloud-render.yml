@@ -1,0 +1,112 @@
+name: Cloud video render
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_url:
+        description: "HTTPS URL to the source gameplay (use a temporary R2 download URL)"
+        required: true
+        type: string
+      clip_seconds:
+        description: "Maximum duration of each clip in seconds"
+        required: true
+        default: "60"
+        type: string
+      max_clips:
+        description: "Maximum number of clips to render"
+        required: true
+        default: "10"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-render-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - name: Validate inputs
+        env:
+          SOURCE_URL: ${{ inputs.source_url }}
+          CLIP_SECONDS: ${{ inputs.clip_seconds }}
+          MAX_CLIPS: ${{ inputs.max_clips }}
+        run: |
+          python - <<'PY'
+          import os
+          from urllib.parse import urlparse
+          u = urlparse(os.environ["SOURCE_URL"])
+          if u.scheme != "https" or not u.netloc:
+              raise SystemExit("source_url must be a valid HTTPS URL")
+          for key, low, high in (("CLIP_SECONDS", 15, 180), ("MAX_CLIPS", 1, 30)):
+              value = int(os.environ[key])
+              if not low <= value <= high:
+                  raise SystemExit(f"{key} must be between {low} and {high}")
+          PY
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Download source
+        env:
+          SOURCE_URL: ${{ inputs.source_url }}
+        run: |
+          mkdir -p work/output
+          curl --fail --location --silent --show-error --retry 2 "$SOURCE_URL" -o work/source.mp4
+          SIZE=$(stat -c%s work/source.mp4)
+          if [ "$SIZE" -gt 12000000000 ]; then
+            echo "Source exceeds the 12 GB safety limit for this runner."
+            exit 1
+          fi
+          ffprobe -v error -show_entries format=duration -of csv=p=0 work/source.mp4 > work/duration.txt
+          cat work/duration.txt
+
+      - name: Render vertical clips
+        env:
+          CLIP_SECONDS: ${{ inputs.clip_seconds }}
+          MAX_CLIPS: ${{ inputs.max_clips }}
+        run: |
+          DURATION=$(cat work/duration.txt)
+          python - <<'PY'
+          import os, subprocess
+          duration = float(open("work/duration.txt").read().strip())
+          clip = int(os.environ["CLIP_SECONDS"])
+          limit = int(os.environ["MAX_CLIPS"])
+          count = min(int(duration // clip), limit)
+          if count < 1:
+              raise SystemExit("Source is shorter than one complete clip.")
+          for i in range(count):
+              start = i * clip
+              out = f"work/output/short_{i+1:03d}.mp4"
+              cmd = [
+                  "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+                  "-ss", str(start), "-i", "work/source.mp4", "-t", str(clip),
+                  "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
+                  "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
+                  "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                  "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k",
+                  "-movflags", "+faststart", out
+              ]
+              subprocess.run(cmd, check=True)
+              print(f"Rendered {out}")
+          PY
+
+      - name: Package outputs
+        run: |
+          cd work
+          zip -qr compadre-shorts-${{ github.run_number }}.zip output
+          mv compadre-shorts-${{ github.run_number }}.zip ..
+
+      - name: Upload rendered clips
+        uses: actions/upload-artifact@v4
+        with:
+          name: compadre-shorts-${{ github.run_number }}
+          path: compadre-shorts-${{ github.run_number }}.zip
+          if-no-files-found: error
+          retention-days: 3
