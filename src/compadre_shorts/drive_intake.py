@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 
 DRIVE="https://www.googleapis.com/drive/v3"
 YOUTUBE="https://www.googleapis.com/youtube/v3"
+MAX_SOURCE_BYTES=12*1024*1024*1024
 
 class ApiError(RuntimeError): pass
 
@@ -71,6 +72,9 @@ def download_one(t,folder,out,stable_minutes):
         print("No stable pending video in Drive input folder.")
         return None
     f=ready[0]; fid=f["id"]; props=f.get("appProperties") or {}
+    source_size=int(f.get("size",0))
+    if source_size and source_size>MAX_SOURCE_BYTES:
+        raise ApiError(f"Source is {source_size/1024**3:.2f} GiB; cloud runner safety limit is 12 GiB. Original retained.")
     props.update({"compadreStatus":"processing","compadrePipeline":"drive-v1",
         "compadreProcessingStarted":datetime.now(timezone.utc).isoformat()})
     patch_props(fid,t,props)
