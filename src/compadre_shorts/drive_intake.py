@@ -65,7 +65,7 @@ def download_one(t,folder,out,stable_minutes):
                 stale_processing=(time.time()-started) > 8*60*60
             except ValueError:
                 stale_processing=True
-        if time.time()-modified >= stable_minutes*60 and status not in ("published","deleted","rendered") and (status!="processing" or stale_processing):
+        if time.time()-modified >= stable_minutes*60 and status not in ("published","deleted") and (status!="processing" or stale_processing):
             ready.append(f)
     if not ready:
         print("No stable pending video in Drive input folder.")
@@ -116,8 +116,8 @@ def cleanup_after_publish(t,fid,video_id):
     f=drive_file(fid,t); p=f.get("appProperties") or {}
     if p.get("compadreStatus") not in ("downloaded","rendered","published"):
         raise ApiError("Source state is not eligible for cleanup; refusing deletion.")
-    p.update({"compadreStatus":"published","compadreYouTubeVideoId":video_id,"compadreCleanupVerified":"true"})
-    patch_props(fid,t,p)
+    # Do not change the source state before deletion: if Drive refuses the
+    # delete, the file remains eligible for an idempotent retry.
     req=Request(f"{DRIVE}/files/{fid}",headers={"Authorization":f"Bearer {t}"},method="DELETE")
     try:
         with urlopen(req,timeout=120): pass
