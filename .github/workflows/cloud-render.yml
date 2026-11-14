@@ -3,8 +3,8 @@ name: Cloud video render
 on:
   workflow_dispatch:
     inputs:
-      source_url:
-        description: "HTTPS URL to the source gameplay (use a temporary R2 download URL)"
+      source_key:
+        description: "Object key of the source video inside the private R2 bucket"
         required: true
         type: string
       clip_seconds:
@@ -29,36 +29,47 @@ jobs:
   render:
     runs-on: ubuntu-24.04
     timeout-minutes: 350
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      AWS_EC2_METADATA_DISABLED: "true"
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
     steps:
-      - name: Validate inputs
+      - name: Validate configuration and inputs
         env:
-          SOURCE_URL: ${{ inputs.source_url }}
+          SOURCE_KEY: ${{ inputs.source_key }}
           CLIP_SECONDS: ${{ inputs.clip_seconds }}
           MAX_CLIPS: ${{ inputs.max_clips }}
         run: |
           python - <<'PY'
           import os
-          from urllib.parse import urlparse
-          u = urlparse(os.environ["SOURCE_URL"])
-          if u.scheme != "https" or not u.netloc:
-              raise SystemExit("source_url must be a valid HTTPS URL")
-          for key, low, high in (("CLIP_SECONDS", 15, 180), ("MAX_CLIPS", 1, 30)):
-              value = int(os.environ[key])
+          from pathlib import PurePosixPath
+          key = os.environ["SOURCE_KEY"]
+          p = PurePosixPath(key)
+          if not key or key.startswith("/") or ".." in p.parts:
+              raise SystemExit("source_key must be a relative object key inside the configured bucket")
+          if not all(os.environ.get(k) for k in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "R2_ACCOUNT_ID", "R2_BUCKET")):
+              raise SystemExit("Missing R2 repository secrets. Configure R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY.")
+          for name, low, high in (("CLIP_SECONDS", 15, 180), ("MAX_CLIPS", 1, 30)):
+              value = int(os.environ[name])
               if not low <= value <= high:
-                  raise SystemExit(f"{key} must be between {low} and {high}")
+                  raise SystemExit(f"{name} must be between {low} and {high}")
           PY
 
-      - name: Install FFmpeg
+      - name: Install FFmpeg and AWS CLI
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg awscli
 
-      - name: Download source
+      - name: Download source privately from R2
         env:
-          SOURCE_URL: ${{ inputs.source_url }}
+          SOURCE_KEY: ${{ inputs.source_key }}
         run: |
           mkdir -p work/output
-          curl --fail --location --silent --show-error --retry 2 "$SOURCE_URL" -o work/source.mp4
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws s3 cp "s3://${R2_BUCKET}/${SOURCE_KEY}" work/source.mp4 --endpoint-url "$ENDPOINT"
           SIZE=$(stat -c%s work/source.mp4)
           if [ "$SIZE" -gt 12000000000 ]; then
             echo "Source exceeds the 12 GB safety limit for this runner."
@@ -72,7 +83,6 @@ jobs:
           CLIP_SECONDS: ${{ inputs.clip_seconds }}
           MAX_CLIPS: ${{ inputs.max_clips }}
         run: |
-          DURATION=$(cat work/duration.txt)
           python - <<'PY'
           import os, subprocess
           duration = float(open("work/duration.txt").read().strip())
@@ -94,19 +104,13 @@ jobs:
                   "-movflags", "+faststart", out
               ]
               subprocess.run(cmd, check=True)
-              print(f"Rendered {out}")
+              print(f"Rendered clip {i+1}/{count}")
           PY
 
-      - name: Package outputs
+      - name: Upload results privately to R2
         run: |
           cd work
           zip -qr compadre-shorts-${{ github.run_number }}.zip output
-          mv compadre-shorts-${{ github.run_number }}.zip ..
-
-      - name: Upload rendered clips
-        uses: actions/upload-artifact@v4
-        with:
-          name: compadre-shorts-${{ github.run_number }}
-          path: compadre-shorts-${{ github.run_number }}.zip
-          if-no-files-found: error
-          retention-days: 3
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws s3 cp "compadre-shorts-${{ github.run_number }}.zip" "s3://${R2_BUCKET}/outputs/${{ github.run_id }}/compadre-shorts.zip" --endpoint-url "$ENDPOINT"
+          echo "Results uploaded to private R2 path: outputs/${{ github.run_id }}/compadre-shorts.zip"
