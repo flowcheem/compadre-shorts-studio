@@ -76,6 +76,15 @@ jobs:
             --output work/shorts --duration 60 --max-clips 10 \
             --min-seconds 20 --style viral --audio-processing normalize --framing safe
 
+      - name: Preserve renders as a private workflow artifact
+        if: steps.preflight.outputs.configured == 'true' && steps.intake.outputs.has_source == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: compadre-shorts-${{ github.run_id }}
+          path: work/shorts/
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Mark Drive source as rendered
         if: steps.preflight.outputs.configured == 'true' && steps.intake.outputs.has_source == 'true'
         env:
@@ -86,11 +95,3 @@ jobs:
           SOURCE_ID=$(python -c "import json; print(json.load(open('work/intake.json'))['source_file_id'])")
           python -m compadre_shorts.drive_intake mark-rendered --file-id "$SOURCE_ID"
 
-      - name: Preserve renders as a private workflow artifact
-        if: steps.preflight.outputs.configured == 'true' && steps.intake.outputs.has_source == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: compadre-shorts-${{ github.run_id }}
-          path: work/shorts/
-          if-no-files-found: error
-          retention-days: 7
