@@ -24,9 +24,9 @@ class CleanupSafetyTests(unittest.TestCase):
         urlopen.assert_not_called()
 
     @patch("compadre_shorts.drive_intake.urlopen")
-    @patch("compadre-shorts.drive_intake.patch_props")
-    @patch("compadre-shorts.drive_intake.drive_file")
-    @patch("compadre-shorts.drive_intake.request_json")
+    @patch("compadre_shorts.drive_intake.patch_props")
+    @patch("compadre_shorts.drive_intake.drive_file")
+    @patch("compadre_shorts.drive_intake.request_json")
     def test_missing_youtube_video_never_deletes_source(
         self, request_json, drive_file, patch_props, urlopen
     ):
