@@ -3,6 +3,7 @@ name: Cloud pipeline tests
 on:
   push:
     branches:
+      - main
       - feature/drive-youtube-automation
   workflow_dispatch:
 
