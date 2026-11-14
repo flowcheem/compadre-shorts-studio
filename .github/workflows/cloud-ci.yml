@@ -1,0 +1,31 @@
+name: Cloud pipeline tests
+
+on:
+  push:
+    branches:
+      - feature/cloud-free-pipeline
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: python -m pip install .
+
+      - name: Run render planning tests
+        run: python -m unittest discover -s tests -v
