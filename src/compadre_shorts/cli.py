@@ -107,12 +107,17 @@ def render_clip(
     command = [
         ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
         "-ss", f"{start:.3f}", "-i", str(source), "-t", f"{length:.3f}",
-        "-map", "0:v:0", "-map", "0:a?",
     ]
     if complex_graph:
-        command.extend(["-filter_complex", complex_graph, "-map", "[vout]"])
+        command.extend([
+            "-filter_complex", complex_graph,
+            "-map", "[vout]", "-map", "0:a?",
+        ])
     else:
-        command.extend(["-vf", ",".join(simple_filters or [])])
+        command.extend([
+            "-map", "0:v:0", "-map", "0:a?",
+            "-vf", ",".join(simple_filters or []),
+        ])
     command.extend([
         "-c:v", "libx264", "-preset", "medium", "-crf", "21",
         "-pix_fmt", "yuv420p",
