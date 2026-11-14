@@ -1,0 +1,103 @@
+name: YouTube upload monitor
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      channel_id:
+        description: 'YouTube channel ID (UC...)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: youtube-upload-monitor
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CHANNEL_ID: ${{ inputs.channel_id || vars.YOUTUBE_CHANNEL_ID }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Detect newest public channel upload
+        id: detect
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import urllib.request
+          import xml.etree.ElementTree as ET
+
+          channel_id = os.environ.get('CHANNEL_ID', '').strip()
+          if not channel_id.startswith('UC'):
+              raise SystemExit('Missing/invalid channel ID. Set repository variable YOUTUBE_CHANNEL_ID to the channel ID (UC...) or provide channel_id when manually starting this workflow.')
+
+          feed_url = f'https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}'
+          request = urllib.request.Request(feed_url, headers={'User-Agent': 'CompadreShortsStudio/0.1'})
+          with urllib.request.urlopen(request, timeout=20) as response:
+              root = ET.fromstring(response.read())
+
+          ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
+          entry = root.find('atom:entry', ns)
+          if entry is None:
+              print('No public uploads found in the channel feed.')
+              raise SystemExit(0)
+
+          video_id = entry.findtext('yt:videoId', namespaces=ns)
+          title = entry.findtext('atom:title', namespaces=ns) or ''
+          published = entry.findtext('atom:published', namespaces=ns) or ''
+          if not video_id:
+              raise SystemExit('YouTube feed entry did not contain a video ID.')
+
+          state = pathlib.Path('.compadre/youtube-last-video.txt')
+          state.parent.mkdir(parents=True, exist_ok=True)
+          previous = state.read_text().strip() if state.exists() else ''
+          is_new = bool(previous and previous != video_id)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'video_id={video_id}\n')
+              output.write(f'video_title={title[:200]}\n')
+              output.write(f'published={published}\n')
+              output.write(f'is_new={str(is_new).lower()}\n')
+
+          if not previous:
+              print(f'Initialized monitor with latest upload: {video_id} — {title}')
+              print('First run establishes a baseline; it does not process old videos.')
+          elif previous == video_id:
+              print(f'No new upload. Latest video remains {video_id}.')
+          else:
+              print(f'NEW YOUTUBE UPLOAD: {video_id} — {title}')
+              print(f'Published: {published}')
+          state.write_text(video_id + '\n')
+
+      - name: Save monitor state
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .compadre/youtube-last-video.txt
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore: update YouTube upload monitor state'
+            git push origin HEAD:main
+          fi
+
+      - name: Report detection result
+        if: steps.detect.outputs.is_new == 'true'
+        run: |
+          {
+            echo '## New YouTube upload detected'
+            echo
+            echo '- Video ID: ${{ steps.detect.outputs.video_id }}'
+            echo '- Title: ${{ steps.detect.outputs.video_title }}'
+            echo '- Published: ${{ steps.detect.outputs.published }}'
+            echo
+            echo 'Next stage is not connected: authorized source access, highlight selection, vertical rendering and YouTube publishing. This monitor does not download or copy YouTube media.'
+          } >> "$GITHUB_STEP_SUMMARY"
