@@ -3,7 +3,7 @@ name: Cloud pipeline tests
 on:
   push:
     branches:
-      - feature/cloud-free-pipeline
+      - feature/drive-youtube-automation
   workflow_dispatch:
 
 permissions:
